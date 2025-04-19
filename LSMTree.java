@@ -8,15 +8,6 @@ public class LSMTree {
         this.sstableSvc = new SSTableService(config);
         this.compactionSvc = new CompactionService(sstableSvc, config);
     }
-
-    public void startBackgroundTasks() {
-        compactionSvc.start();
-    }
-
-    public void shutdown() {
-        compactionSvc.stop();
-        sstableSvc.close();
-    }
     
     public String get(String key) {
         String value = memtableSvc.get(key);
