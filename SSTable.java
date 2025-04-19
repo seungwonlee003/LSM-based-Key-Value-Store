@@ -1,7 +1,3 @@
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-
 public class SSTable {
     private final String filePath;
     private final BloomFilter bloomFilter;
@@ -17,15 +13,16 @@ public class SSTable {
         String filePath = "sstable_" + System.nanoTime() + ".sst";
         BloomFilter bloomFilter = new BloomFilter(1000, 3); // Adjustable: ~1000 items, 3 hashes
         Map<String, Long> index = new TreeMap<>();
-        long segmentSize = 64 * 1024 * 1024; // 64MB, from Config.getSegmentSize()
+        long segmentSize = 64 * 1024 * 1024; // 64MB, from CompactionService config
 
         try (RandomAccessFile file = new RandomAccessFile(filePath, "rw")) {
-            SortedMap<String, String> entries = memtable.getSortedEntries();
+            Iterator<Map.Entry<String, String>> entries = memtable.iterator();
             long offset = 0;
-            int indexInterval = Math.max(1, entries.size() / 10); // Sparse index every ~10 entries
             int count = 0;
+            int indexInterval = 10; // Sparse index every ~10 entries (adjustable)
 
-            for (Map.Entry<String, String> entry : entries.entrySet()) {
+            while (entries.hasNext()) {
+                Map.Entry<String, String> entry = entries.next();
                 String key = entry.getKey();
                 String value = entry.getValue(); // May be null (tombstone)
                 bloomFilter.add(key);
@@ -45,9 +42,9 @@ public class SSTable {
                 offset += 4 + keyBytes.length + 4 + valueBytes.length;
                 count++;
 
-                // Simplified: Assume one file per Memtable (can split if > segmentSize)
+                // Stop if segment size exceeded (simplified)
                 if (offset >= segmentSize) {
-                    break; // Truncate for simplicity; real system would create new SSTable
+                    break; // Real system would create new SSTable
                 }
             }
 
