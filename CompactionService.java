@@ -1,18 +1,18 @@
 public class CompactionService {
 
     private final MemtableService memtableService;
-    private final SSTableService sstableService;
+    private final SSTable sstable;
     private final Manifest manifest;
     private final Config config;
     private final ScheduledExecutorService memtableFlusher;
     private final ScheduledExecutorService compactionRunner;
     
     public CompactionService(MemtableService memtableService,
-                             SSTableService sstableService,
+                             SSTable sstable,
                              Manifest manifest,
                              Config config) {
         this.memtableService = Objects.requireNonNull(memtableService);
-        this.sstableService  = Objects.requireNonNull(sstableService);
+        this.sstable  = Objects.requireNonNull(sstable);
         this.manifest        = Objects.requireNonNull(manifest);
         this.config          = Objects.requireNonNull(config);
 
