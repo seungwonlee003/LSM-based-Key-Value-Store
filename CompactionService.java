@@ -45,7 +45,7 @@ public class CompactionService {
             if (mem == null) {
                 return;
             }
-            SSTable sstable = sstableService.flush(mem);
+            SSTable sstable = sstable.createSSTableFromMemtable(mem);
             manifest.addSSTable(0, sstable);
         } finally {
             manifest.getLock().writeLock().unlock();
