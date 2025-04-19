@@ -7,11 +7,6 @@ public class SSTableService {
         this.baseSegmentSize = baseSegmentSize;
     }
 
-    public SSTable flush(Memtable memtable) {
-        SSTable sstable = SSTable.createFromMemtable(memtable, baseSegmentSize);
-        return sstable;
-    }
-
     public String get(String key) {
         for (int level = 0; level <= manifest.maxLevel(); level++) {
             for (SSTable sstable : manifest.getSSTables(level)) {
