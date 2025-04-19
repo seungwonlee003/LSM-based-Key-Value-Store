@@ -120,44 +120,4 @@ public class SSTable {
             }
         }
     }
-
-    // Simple Bloom Filter implementation
-    private static class BloomFilter {
-        private final BitSet bitSet;
-        private final int size;
-        private final int hashCount;
-
-        public BloomFilter(int expectedItems, int hashCount) {
-            this.size = optimalSize(expectedItems);
-            this.bitSet = new BitSet(size);
-            this.hashCount = hashCount;
-        }
-
-        public void add(String key) {
-            for (int i = 0; i < hashCount; i++) {
-                bitSet.set(hash(key, i));
-            }
-        }
-
-        public boolean mightContain(String key) {
-            for (int i = 0; i < hashCount; i++) {
-                if (!bitSet.get(hash(key, i))) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        private int hash(String key, int seed) {
-            int hash = 0;
-            for (char c : key.toCharArray()) {
-                hash = 31 * hash + c + seed;
-            }
-            return Math.abs(hash % size);
-        }
-
-        private static int optimalSize(int expectedItems) {
-            return expectedItems * 10; // ~10 bits per item
-        }
-    }
 }
