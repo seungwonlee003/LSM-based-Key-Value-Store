@@ -7,9 +7,9 @@ public class SSTableService {
         this.baseSegmentSize = baseSegmentSize;
     }
 
-    public void flush(Memtable memtable) {
+    public SSTable flush(Memtable memtable) {
         SSTable sstable = SSTable.createFromMemtable(memtable, baseSegmentSize);
-        manifest.addSSTable(0, sstable);
+        return sstable;
     }
 
     public String get(String key) {
