@@ -1,6 +1,6 @@
 class MemtableService {
     private final Config config;
-    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+    public final ReadWriteLock rwLock = new ReentrantReadWriteLock();
     private Memtable activeMemtable;
     private final Queue<Memtable> flushQueue = new ArrayDeque<>();
 
@@ -70,5 +70,9 @@ class MemtableService {
         } finally {
             rwLock.readLock().unlock();
         }
+    }
+
+    public ReadWriteLock getLock(){
+        return rwLock;
     }
 }
