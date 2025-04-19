@@ -26,15 +26,9 @@ public class LSMTree {
 
     public void put(String key, String value) {
         memtableSvc.put(key, value);
-        if (memtableSvc.shouldFlush()) {
-            sstableSvc.flush(memtableSvc.switchMemtable());
-        }
     }
 
     public void delete(String key) {
         memtableSvc.delete(key);
-        if (memtableSvc.shouldFlush()) {
-            sstableSvc.flush(memtableSvc.switchMemtable());
-        }
     }
 }
