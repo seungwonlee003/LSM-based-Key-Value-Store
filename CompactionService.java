@@ -51,9 +51,6 @@ public class CompactionService {
             }
             SSTable sstable = SSTable.createSSTableFromMemtable(mem);
             manifest.addSSTable(0, sstable);
-        } catch (RuntimeException e) {
-            // Log error and continue to ensure locks are released
-            System.err.println("Failed to flush Memtable: " + e.getMessage());
         } finally {
             manifest.getLock().writeLock().unlock();
             memtableService.getLock().writeLock().unlock();
@@ -78,20 +75,12 @@ public class CompactionService {
                 long targetSize = config.getSegmentSize(); // 64MB
                 List<SSTable> merged = Compactor.mergeAndSplit(inputs, targetSize);
 
-                for (SSTable sstable : inputs) {
-                    try {
-                        sstable.delete();
-                    } catch (RuntimeException e) {
-                        // Log error and continue
-                        System.err.println("Failed to delete SSTable: " + e.getMessage());
-                    }
+                for (SSTable sstable : inputs){
+                    sstable.delete();
                 }
 
                 manifest.replace(level, tables, level + 1, merged);
             }
-        } catch (RuntimeException e) {
-            // Log error and continue to ensure lock is released
-            System.err.println("Failed to run compaction: " + e.getMessage());
         } finally {
             manifest.getLock().writeLock().unlock();
         }
@@ -100,17 +89,5 @@ public class CompactionService {
     public void stop() {
         memtableFlusher.shutdown();
         compactionRunner.shutdown();
-        try {
-            if (!memtableFlusher.awaitTermination(5, TimeUnit.SECONDS)) {
-                memtableFlusher.shutdownNow();
-            }
-            if (!compactionRunner.awaitTermination(5, TimeUnit.SECONDS)) {
-                compactionRunner.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            memtableFlusher.shutdownNow();
-            compactionRunner.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 }
