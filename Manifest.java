@@ -10,39 +10,25 @@ public class Manifest {
     private final Map<Integer, List<SSTable>> levelMap;
     private final ReadWriteLock rwLock;
 
-    // consturctor either loads the manifest and current files if exist or create all of them
-    public Manifest() {
+    public Manifest() throws IOException {
         this.filePath = "./data";
         this.current = filePath + "/CURRENT";
         this.levelMap = new HashMap<>();
         this.rwLock = new ReentrantReadWriteLock();
 
-        try {
-            Files.createDirectories(Paths.get(filePath));
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create data directory: " + filePath, e);
-        }
+        Files.createDirectories(Paths.get(filePath));
 
         Path currentPath = Paths.get(current);
         if (Files.exists(currentPath)) {
-            try {
-                String manifestFile = Files.readString(currentPath).trim();
-                loadManifest(manifestFile);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to read CURRENT or manifest file", e);
-            }
+            String manifestFile = Files.readString(currentPath).trim();
+            loadManifest(manifestFile);
         } else {
             String manifestFile = generateManifestFileName(1);
-            try {
-                persistToFile(manifestFile);
-                Files.writeString(currentPath, manifestFile);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to initialize manifest or CURRENT file", e);
-            }
+            persistToFile(manifestFile);
+            Files.writeString(currentPath, manifestFile);
         }
     }
 
-    // loads the manifest file and all the sstables into memory
     private void loadManifest(String manifestFile) throws IOException {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath + "/" + manifestFile))) {
             Map<Integer, List<String>> serializedMap = (Map<Integer, List<String>>) ois.readObject();
@@ -59,20 +45,15 @@ public class Manifest {
             } finally {
                 rwLock.writeLock().unlock();
             }
-        } catch (ClassNotFoundException e) {
-            throw new IOException("Invalid manifest file format", e);
         }
     }
 
-    // persist the manifest file into new file and reset the current file's pointer to this
-    public void persist() {
+    public void persist() throws IOException {
         rwLock.writeLock().lock();
         try {
             String newManifestFile = generateNextManifestFileName();
             persistToFile(newManifestFile);
             Files.writeString(Paths.get(current), newManifestFile);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to persist manifest", e);
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -113,7 +94,7 @@ public class Manifest {
         return rwLock;
     }
 
-    public void addSSTable(int level, SSTable sstable) {
+    public void addSSTable(int level, SSTable sstable) throws IOException {
         rwLock.writeLock().lock();
         try {
             levelMap.computeIfAbsent(level, k -> new ArrayList<>()).add(sstable);
@@ -141,7 +122,7 @@ public class Manifest {
         }
     }
 
-    public void replace(int levelToClear, List<SSTable> oldTables, int targetLevel, List<SSTable> newTables) {
+    public void replace(int levelToClear, List<SSTable> oldTables, int targetLevel, List<SSTable> newTables) throws IOException {
         rwLock.writeLock().lock();
         try {
             levelMap.remove(levelToClear);
@@ -151,6 +132,4 @@ public class Manifest {
             rwLock.writeLock().unlock();
         }
     }
-}
-
 }
