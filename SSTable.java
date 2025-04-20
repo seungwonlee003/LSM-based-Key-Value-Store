@@ -26,7 +26,6 @@ public class SSTable {
             int count = 0;
             int indexInterval = 10;
             while (file.getFilePointer() < file.length()) {
-                // Read key-value pair
                 int keyLength = file.readInt();
                 byte[] keyBytes = new byte[keyLength];
                 file.readFully(keyBytes);
@@ -54,7 +53,7 @@ public class SSTable {
 
     public static SSTable createSSTableFromMemtable(Memtable memtable) {
         String filePath = "./data/sstable_" + System.nanoTime() + ".sst";
-        BloomFilter bloomFilter = new BloomFilter(1000, 3);e
+        BloomFilter bloomFilter = new BloomFilter(1000, 3);
         NavigableMap<String, Long> index = new TreeMap<>();
         long segmentSize = 64 * 1024 * 1024;
 
