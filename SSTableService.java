@@ -10,11 +10,9 @@ public class SSTableService {
     public String get(String key) {
         for (int level = 0; level <= manifest.maxLevel(); level++) {
             for (SSTable sstable : manifest.getSSTables(level)) {
-                if (sstable.mightContain(key)) {
-                    String value = sstable.get(key);
-                    if (value != null) {
-                        return value;
-                    }
+                String value = sstable.get(key);
+                if (value != null) {
+                    return value;
                 }
             }
         }
