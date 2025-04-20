@@ -10,6 +10,7 @@ public class Manifest {
     private final Map<Integer, List<SSTable>> levelMap;
     private final ReadWriteLock rwLock;
 
+    // consturctor either loads the manifest and current files if exist or create all of them
     public Manifest() {
         this.filePath = "./data";
         this.current = filePath + "/CURRENT";
@@ -41,6 +42,7 @@ public class Manifest {
         }
     }
 
+    // loads the manifest file and all the sstables into memory
     private void loadManifest(String manifestFile) throws IOException {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath + "/" + manifestFile))) {
             Map<Integer, List<String>> serializedMap = (Map<Integer, List<String>>) ois.readObject();
@@ -62,6 +64,7 @@ public class Manifest {
         }
     }
 
+    // persist the manifest file into new file and reset the current file's pointer to this
     public void persist() {
         rwLock.writeLock().lock();
         try {
