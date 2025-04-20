@@ -5,9 +5,9 @@ public class LSMTree {
     private final CompactionService compactionSvc;
 
     public LSMTree(Config config) {
+        this.manifest = new Manifest(config);
         this.memtableSvc = new MemtableService(config);
         this.sstableSvc = new SSTableService(config);
-        this.manifest = new Manifest();
         this.compactionSvc = new CompactionService(memTableSvc, sstableSvc, manifest, config);
     }
     
