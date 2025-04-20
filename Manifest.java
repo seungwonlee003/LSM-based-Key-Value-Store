@@ -1,10 +1,112 @@
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 public class Manifest {
+    private final String filePath;
+    private final String current;
     private final Map<Integer, List<SSTable>> levelMap;
     private final ReadWriteLock rwLock;
 
     public Manifest() {
+        this.filePath = "./data";
+        this.current = filePath + "/CURRENT";
         this.levelMap = new HashMap<>();
         this.rwLock = new ReentrantReadWriteLock();
+
+        // Ensure directory exists
+        try {
+            Files.createDirectories(Paths.get(filePath));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create data directory: " + filePath, e);
+        }
+
+        // Check if CURRENT file exists
+        Path currentPath = Paths.get(current);
+        if (Files.exists(currentPath)) {
+            try {
+                String manifestFile = Files.readString(currentPath).trim();
+                loadManifest(manifestFile);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to read CURRENT or manifest file", e);
+            }
+        } else {
+            // Create new manifest and CURRENT file
+            String manifestFile = generateManifestFileName(1);
+            try {
+                persistToFile(manifestFile);
+                Files.writeString(currentPath, manifestFile);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to initialize manifest or CURRENT file", e);
+            }
+        }
+    }
+
+    private void loadManifest(String manifestFile) throws IOException {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath + "/" + manifestFile))) {
+            Map<Integer, List<String>> serializedMap = (Map<Integer, List<String>>) ois.readObject();
+            rwLock.writeLock().lock();
+            try {
+                for (Map.Entry<Integer, List<String>> entry : serializedMap.entrySet()) {
+                    int level = entry.getKey();
+                    List<SSTable> sstables = new ArrayList<>();
+                    for (String sstablePath : entry.getValue()) {
+                        sstables.add(new SSTable(sstablePath));
+                    }
+                    levelMap.put(level, sstables);
+                }
+            } finally {
+                rwLock.writeLock().unlock();
+            }
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Invalid manifest file format", e);
+        }
+    }
+
+    public void persist() {
+        rwLock.writeLock().lock();
+        try {
+            String newManifestFile = generateNextManifestFileName();
+            persistToFile(newManifestFile);
+            Files.writeString(Paths.get(current), newManifestFile);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to persist manifest", e);
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+
+    private void persistToFile(String manifestFile) throws IOException {
+        Map<Integer, List<String>> serializedMap = new HashMap<>();
+        for (Map.Entry<Integer, List<SSTable>> entry : levelMap.entrySet()) {
+            List<String> sstablePaths = new ArrayList<>();
+            for (SSTable sstable : entry.getValue()) {
+                sstablePaths.add(sstable.getFilePath());
+            }
+            serializedMap.put(entry.getKey(), sstablePaths);
+        }
+        try (ObjectOutputStream oos = new ObjectOutputStream(
+                new FileOutputStream(filePath + "/" + manifestFile))) {
+            oos.writeObject(serializedMap);
+        }
+    }
+
+    private String generateManifestFileName(int number) {
+        return String.format("MANIFEST-%06d", number);
+    }
+
+    private String generateNextManifestFileName() throws IOException {
+        int maxNumber = 1;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(Paths.get(filePath), "MANIFEST-*")) {
+            for (Path path : stream) {
+                String fileName = path.getFileName().toString();
+                int number = Integer.parseInt(fileName.substring("MANIFEST-".length()));
+                maxNumber = Math.max(maxNumber, number);
+            }
+        }
+        return generateManifestFileName(maxNumber + 1);
     }
 
     public ReadWriteLock getLock() {
@@ -15,6 +117,7 @@ public class Manifest {
         rwLock.writeLock().lock();
         try {
             levelMap.computeIfAbsent(level, k -> new ArrayList<>()).add(sstable);
+            persist(); // Persist after modification
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -43,8 +146,11 @@ public class Manifest {
         try {
             levelMap.remove(levelToClear); // Clear the source level
             levelMap.computeIfAbsent(targetLevel, k -> new ArrayList<>()).addAll(newTables);
+            persist(); // Persist after modification
         } finally {
             rwLock.writeLock().unlock();
         }
     }
+}
+
 }
