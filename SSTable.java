@@ -14,6 +14,12 @@ public class SSTable {
         init();
     }
 
+    private SSTable(String filePath, BloomFilter bloomFilter, NavigableMap<String, Long> index){
+        this.filePath = filePath;
+        this.bloomFilter = bloomFilter;
+        this.index = index;
+    }
+
     public void init() {
         try (RandomAccessFile file = new RandomAccessFile(filePath, "r")) {
             long offset = 0;
