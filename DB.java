@@ -1,10 +1,10 @@
-public class LSMTree {
+public class DB {
     private final MemtableService memtableSvc;
     private final SSTableService sstableSvc;
     private final Manifest manifest;
     private final CompactionService compactionSvc;
 
-    public LSMTree(Config config) {
+    public DB(Config config) {
         this.manifest = new Manifest();
         this.memtableSvc = new MemtableService(config);
         this.sstableSvc = new SSTableService(manifest);
