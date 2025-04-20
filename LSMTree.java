@@ -5,10 +5,10 @@ public class LSMTree {
     private final CompactionService compactionSvc;
 
     public LSMTree(Config config) {
-        this.manifest = new Manifest(config);
+        this.manifest = new Manifest();
         this.memtableSvc = new MemtableService(config);
-        this.sstableSvc = new SSTableService(config);
-        this.compactionSvc = new CompactionService(memTableSvc, sstableSvc, manifest, config);
+        this.sstableSvc = new SSTableService(manifest);
+        this.compactionSvc = new CompactionService(memTableSvc, manifest, config);
     }
     
     public String get(String key) {
