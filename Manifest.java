@@ -16,14 +16,12 @@ public class Manifest {
         this.levelMap = new HashMap<>();
         this.rwLock = new ReentrantReadWriteLock();
 
-        // Ensure directory exists
         try {
             Files.createDirectories(Paths.get(filePath));
         } catch (IOException e) {
             throw new RuntimeException("Failed to create data directory: " + filePath, e);
         }
 
-        // Check if CURRENT file exists
         Path currentPath = Paths.get(current);
         if (Files.exists(currentPath)) {
             try {
@@ -33,7 +31,6 @@ public class Manifest {
                 throw new RuntimeException("Failed to read CURRENT or manifest file", e);
             }
         } else {
-            // Create new manifest and CURRENT file
             String manifestFile = generateManifestFileName(1);
             try {
                 persistToFile(manifestFile);
@@ -117,7 +114,7 @@ public class Manifest {
         rwLock.writeLock().lock();
         try {
             levelMap.computeIfAbsent(level, k -> new ArrayList<>()).add(sstable);
-            persist(); // Persist after modification
+            persist();
         } finally {
             rwLock.writeLock().unlock();
         }
@@ -144,9 +141,9 @@ public class Manifest {
     public void replace(int levelToClear, List<SSTable> oldTables, int targetLevel, List<SSTable> newTables) {
         rwLock.writeLock().lock();
         try {
-            levelMap.remove(levelToClear); // Clear the source level
+            levelMap.remove(levelToClear);
             levelMap.computeIfAbsent(targetLevel, k -> new ArrayList<>()).addAll(newTables);
-            persist(); // Persist after modification
+            persist();
         } finally {
             rwLock.writeLock().unlock();
         }
