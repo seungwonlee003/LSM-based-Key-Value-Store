@@ -1,27 +1,27 @@
 public class DB {
-    private final MemtableService memtableSvc;
-    private final SSTableService sstableSvc;
+    private final MemtableService memtableService;
+    private final SSTableService sstableService;
     private final Manifest manifest;
-    private final CompactionService compactionSvc;
+    private final CompactionService compactionService;
 
     public DB(Config config) {
         this.manifest = new Manifest();
-        this.memtableSvc = new MemtableService(config);
-        this.sstableSvc = new SSTableService(manifest);
-        this.compactionSvc = new CompactionService(memTableSvc, manifest, config);
+        this.memtableService = new MemtableService(config);
+        this.sstableService = new SSTableService(manifest);
+        this.compactionService = new CompactionService(memTableSvc, manifest, config);
     }
     
     public String get(String key) {
-        String value = memtableSvc.get(key);
+        String value = memtableService.get(key);
         if(value != null) return value;
-        return sstableSvc.get(key);
+        return sstableService.get(key);
     }
 
     public void put(String key, String value) {
-        memtableSvc.put(key, value);
+        memtableService.put(key, value);
     }
 
     public void delete(String key) {
-        memtableSvc.delete(key);
+        memtableService.delete(key);
     }
 }
