@@ -5,7 +5,8 @@ import java.util.*;
 public class SSTable {
     private final String filePath;
     private final BloomFilter bloomFilter;
-    private final NavigableMap<String, Long> index;
+    private final NavigableMap<String, Long> index; // sparse index
+    private static final int INDEX_INTERVAL = 100;  // index every 100th key
 
     private SSTable(String filePath) {
         this.filePath = filePath;
@@ -20,11 +21,11 @@ public class SSTable {
         this.index = index;
     }
 
-    public void init() {
+    public void init() throws IOException {
         try (RandomAccessFile file = new RandomAccessFile(filePath, "r")) {
             long offset = 0;
             int count = 0;
-            int indexInterval = 10;
+
             while (file.getFilePointer() < file.length()) {
                 int keyLength = file.readInt();
                 byte[] keyBytes = new byte[keyLength];
@@ -39,29 +40,26 @@ public class SSTable {
 
                 bloomFilter.add(key);
 
-                if (count % indexInterval == 0) {
+                if (count % INDEX_INTERVAL == 0) {
                     index.put(key, offset);
                 }
 
                 offset += 4 + keyLength + 4 + valueLength;
                 count++;
             }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to initialize SSTable: " + filePath, e);
         }
     }
 
-    public static SSTable createSSTableFromMemtable(Memtable memtable) {
+    public static SSTable createSSTableFromMemtable(Memtable memtable) throws IOException {
         String filePath = "./data/sstable_" + System.nanoTime() + ".sst";
         BloomFilter bloomFilter = new BloomFilter(1000, 3);
-        NavigableMap<String, Long> index = new TreeMap<>();
-        long segmentSize = 64 * 1024 * 1024;
+        TreeMap<String, Long> index = new TreeMap<>();
+        long segmentSize = 64 * 1024 * 1024; // 64MB target
 
         try (RandomAccessFile file = new RandomAccessFile(filePath, "rw")) {
             Iterator<Map.Entry<String, String>> entries = memtable.iterator();
             long offset = 0;
             int count = 0;
-            int indexInterval = 10;
 
             while (entries.hasNext()) {
                 Map.Entry<String, String> entry = entries.next();
@@ -76,37 +74,36 @@ public class SSTable {
                 file.writeInt(valueBytes.length);
                 file.write(valueBytes);
 
-                if (count % indexInterval == 0) {
+                if (count % INDEX_INTERVAL == 0) {
                     index.put(key, offset);
                 }
+
                 offset += 4 + keyBytes.length + 4 + valueBytes.length;
                 count++;
             }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create SSTable: " + filePath, e);
         }
 
         return new SSTable(filePath, bloomFilter, index);
     }
-
+    
     public boolean mightContain(String key) {
         return bloomFilter.mightContain(key);
     }
 
     public String get(String key) {
-        // Step 1: Check Bloom filter
+        // check bloom filter
         if (!bloomFilter.mightContain(key)) {
             return null;
         }
 
-        // Step 2: Navigate sparse index to find largest key <= target key
+        // sparse index to find largest key <= target key
         Map.Entry<String, Long> indexEntry = index.floorEntry(key);
         if (indexEntry == null) {
             return null;
         }
         long offset = indexEntry.getValue();
 
-        // Step 3: Read sequentially from offset until key is found or larger key encountered
+        // sequential read from offset until key is found or larger key encountered
         try (RandomAccessFile file = new RandomAccessFile(filePath, "r")) {
             file.seek(offset);
             while (file.getFilePointer() < file.length()) {
@@ -122,7 +119,6 @@ public class SSTable {
                     file.readFully(valueBytes);
                 }
                 
-                // Compare keys
                 if (currentKey.equals(key)) {
                     return valueLength > 0 ? new String(valueBytes, StandardCharsets.UTF_8) : null; // Null for tombstone
                 }
