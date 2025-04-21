@@ -55,21 +55,12 @@ class MemtableService {
     }
     
     public Memtable pollFlushableMemtable() {
-        rwLock.writeLock().lock();
-        try {
-            return flushQueue.poll();
-        } finally {
-            rwLock.writeLock().unlock();
-        }
+        return flushQueue.poll();
+
     }
 
     public boolean hasFlushableMemtable() {
-        rwLock.readLock().lock();
-        try {
-            return !flushQueue.isEmpty();
-        } finally {
-            rwLock.readLock().unlock();
-        }
+        return !flushQueue.isEmpty();
     }
 
     public ReadWriteLock getLock(){
