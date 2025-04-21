@@ -15,7 +15,7 @@ public class SSTable {
         init();
     }
 
-    private SSTable(String filePath, BloomFilter bloomFilter, NavigableMap<String, Long> index){
+    private SSTable(String filePath, BloomFilter bloomFilter, NavigableMap<String, Long> index) {
         this.filePath = filePath;
         this.bloomFilter = bloomFilter;
         this.index = index;
@@ -85,7 +85,100 @@ public class SSTable {
 
         return new SSTable(filePath, bloomFilter, index);
     }
-    
+
+    public static List<SSTable> sortedRun(String dataDir, long sstMaxSize, SSTable... tables) throws IOException {
+        // Create iterators for each SSTable
+        SSTableIterator[] iterators = Arrays.stream(tables)
+                .map(SSTableIterator::new)
+                .toArray(SSTableIterator[]::new);
+
+        // Initialize priority queue for k-way merge
+        PriorityQueue<SSTableEntry> queue = new PriorityQueue<>((e1, e2) -> e1.key.compareTo(e2.key));
+        for (int i = 0; i < iterators.length; i++) {
+            if (iterators[i].hasNext()) {
+                queue.offer(new SSTableEntry(iterators[i].next(), i));
+            }
+        }
+
+        List<SSTable> newSSTables = new ArrayList<>();
+        List<Map.Entry<String, String>> buffer = new ArrayList<>();
+        long currentSize = 0;
+        String lastKey = null;
+
+        // Perform k-way merge
+        while (!queue.isEmpty()) {
+            SSTableEntry entry = queue.poll();
+            String key = entry.key;
+            String value = entry.value;
+            int iteratorIndex = entry.iteratorIndex;
+
+            // Skip duplicates, keep the latest value
+            if (lastKey == null || !lastKey.equals(key)) {
+                // Flush buffer to a new SSTable if size exceeds sstMaxSize
+                if (currentSize >= sstMaxSize && !buffer.isEmpty()) {
+                    newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
+                    buffer.clear();
+                    currentSize = 0;
+                }
+
+                // Add to buffer
+                buffer.add(new AbstractMap.SimpleEntry<>(key, value));
+                currentSize += 4 + key.getBytes(StandardCharsets.UTF_8).length +
+                        4 + (value != null ? value.getBytes(StandardCharsets.UTF_8).length : 0);
+                lastKey = key;
+            }
+
+            // Advance the iterator
+            if (iterators[iteratorIndex].hasNext()) {
+                queue.offer(new SSTableEntry(iterators[iteratorIndex].next(), iteratorIndex));
+            }
+        }
+
+        // Create final SSTable from remaining buffer
+        if (!buffer.isEmpty()) {
+            newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
+        }
+
+        // Close iterators
+        for (SSTableIterator iterator : iterators) {
+            iterator.close();
+        }
+
+        return newSSTables;
+    }
+
+    private static SSTable createSSTableFromBuffer(String dataDir, List<Map.Entry<String, String>> buffer) throws IOException {
+        String filePath = dataDir + "/sstable_" + System.nanoTime() + ".sst";
+        BloomFilter bloomFilter = new BloomFilter(1000, 3);
+        TreeMap<String, Long> index = new TreeMap<>();
+        long offset = 0;
+        int count = 0;
+
+        try (RandomAccessFile file = new RandomAccessFile(filePath, "rw")) {
+            for (Map.Entry<String, String> entry : buffer) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+                bloomFilter.add(key);
+
+                byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+                byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
+                file.writeInt(keyBytes.length);
+                file.write(keyBytes);
+                file.writeInt(valueBytes.length);
+                file.write(valueBytes);
+
+                if (count % INDEX_INTERVAL == 0) {
+                    index.put(key, offset);
+                }
+
+                offset += 4 + keyBytes.length + 4 + valueBytes.length;
+                count++;
+            }
+        }
+
+        return new SSTable(filePath, bloomFilter, index);
+    }
+
     public boolean mightContain(String key) {
         return bloomFilter.mightContain(key);
     }
@@ -112,13 +205,13 @@ public class SSTable {
                 byte[] keyBytes = new byte[keyLength];
                 file.readFully(keyBytes);
                 String currentKey = new String(keyBytes, StandardCharsets.UTF_8);
-                
+
                 int valueLength = file.readInt();
                 byte[] valueBytes = new byte[valueLength];
                 if (valueLength > 0) {
                     file.readFully(valueBytes);
                 }
-                
+
                 if (currentKey.equals(key)) {
                     return valueLength > 0 ? new String(valueBytes, StandardCharsets.UTF_8) : null; // Null for tombstone
                 }
@@ -145,5 +238,74 @@ public class SSTable {
     public String getFilePath() {
         return filePath;
     }
-}
 
+    private static class SSTableIterator implements Iterator<Map.Entry<String, String>> {
+        private final RandomAccessFile file;
+        private boolean closed;
+
+        public SSTableIterator(SSTable sstable) {
+            try {
+                this.file = new RandomAccessFile(sstable.filePath, "r");
+                this.closed = false;
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to open SSTable for iteration: " + sstable.filePath, e);
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            try {
+                return !closed && file.getFilePointer() < file.length();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to check SSTable iterator: ", e);
+            }
+        }
+
+        @Override
+        public Map.Entry<String, String> next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            try {
+                int keyLength = file.readInt();
+                byte[] keyBytes = new byte[keyLength];
+                file.readFully(keyBytes);
+                String key = new String(keyBytes, StandardCharsets.UTF_8);
+
+                int valueLength = file.readInt();
+                byte[] valueBytes = new byte[valueLength];
+                if (valueLength > 0) {
+                    file.readFully(valueBytes);
+                }
+                String value = valueLength > 0 ? new String(valueBytes, StandardCharsets.UTF_8) : null;
+
+                return new AbstractMap.SimpleEntry<>(key, value);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to read next entry from SSTable: ", e);
+            }
+        }
+
+        public void close() {
+            if (!closed) {
+                try {
+                    file.close();
+                    closed = true;
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to close SSTable iterator: ", e);
+                }
+            }
+        }
+    }
+
+    private static class SSTableEntry {
+        final String key;
+        final String value;
+        final int iteratorIndex;
+
+        SSTableEntry(Map.Entry<String, String> entry, int iteratorIndex) {
+            this.key = entry.getKey();
+            this.value = entry.getValue();
+            this.iteratorIndex = iteratorIndex;
+        }
+    }
+}
