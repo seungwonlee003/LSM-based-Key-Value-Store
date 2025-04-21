@@ -86,64 +86,68 @@ public class SSTable {
         return new SSTable(filePath, bloomFilter, index);
     }
 
-    public static List<SSTable> sortedRun(String dataDir, long sstMaxSize, SSTable... tables) throws IOException {
+    public static List<SSTable> sortedRun(String dataDir, long sstMaxSize, int l0TableCount, SSTable... tables) throws IOException {
         // Create iterators for each SSTable
         SSTableIterator[] iterators = Arrays.stream(tables)
                 .map(SSTableIterator::new)
                 .toArray(SSTableIterator[]::new);
-
-        // Initialize priority queue for k-way merge
-        PriorityQueue<SSTableEntry> queue = new PriorityQueue<>((e1, e2) -> e1.key.compareTo(e2.key));
+    
+        // Initialize priority queue with key, level, and recency comparison
+        PriorityQueue<SSTableEntry> queue = new PriorityQueue<>((e1, e2) -> {
+            int keyCompare = e1.key.compareTo(e2.key);
+            if (keyCompare != 0) return keyCompare;
+            // Prioritize L0 (index < l0TableCount) over L1 (index >= l0TableCount)
+            boolean e1IsL0 = e1.iteratorIndex < l0TableCount;
+            boolean e2IsL0 = e2.iteratorIndex < l0TableCount;
+            if (e1IsL0 != e2IsL0) return e1IsL0 ? -1 : 1;
+            // Within same level, higher index = newer SSTable
+            return Integer.compare(e2.iteratorIndex, e1.iteratorIndex);
+        });
         for (int i = 0; i < iterators.length; i++) {
             if (iterators[i].hasNext()) {
                 queue.offer(new SSTableEntry(iterators[i].next(), i));
             }
         }
-
+    
         List<SSTable> newSSTables = new ArrayList<>();
         List<Map.Entry<String, String>> buffer = new ArrayList<>();
         long currentSize = 0;
-        String lastKey = null;
-
+    
         // Perform k-way merge
         while (!queue.isEmpty()) {
             SSTableEntry entry = queue.poll();
             String key = entry.key;
             String value = entry.value;
             int iteratorIndex = entry.iteratorIndex;
-
-            // Skip duplicates, keep the latest value
-            if (lastKey == null || !lastKey.equals(key)) {
-                // Flush buffer to a new SSTable if size exceeds sstMaxSize
-                if (currentSize >= sstMaxSize && !buffer.isEmpty()) {
-                    newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
-                    buffer.clear();
-                    currentSize = 0;
-                }
-
-                // Add to buffer
-                buffer.add(new AbstractMap.SimpleEntry<>(key, value));
-                currentSize += 4 + key.getBytes(StandardCharsets.UTF_8).length +
-                        4 + (value != null ? value.getBytes(StandardCharsets.UTF_8).length : 0);
-                lastKey = key;
+    
+            // Flush buffer if size exceeds sstMaxSize
+            if (currentSize >= sstMaxSize && !buffer.isEmpty()) {
+                newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
+                buffer.clear();
+                currentSize = 0;
             }
-
-            // Advance the iterator
+    
+            // Add to buffer
+            buffer.add(new AbstractMap.SimpleEntry<>(key, value));
+            currentSize += 4 + key.getBytes(StandardCharsets.UTF_8).length +
+                    4 + (value != null ? value.getBytes(StandardCharsets.UTF_8).length : 0);
+    
+            // Advance iterator
             if (iterators[iteratorIndex].hasNext()) {
                 queue.offer(new SSTableEntry(iterators[iteratorIndex].next(), iteratorIndex));
             }
         }
-
+    
         // Create final SSTable from remaining buffer
         if (!buffer.isEmpty()) {
             newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
         }
-
+    
         // Close iterators
         for (SSTableIterator iterator : iterators) {
             iterator.close();
         }
-
+    
         return newSSTables;
     }
 
