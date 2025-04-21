@@ -111,34 +111,31 @@ public class SSTable {
         List<SSTable> newSSTables = new ArrayList<>();
         List<Map.Entry<String, String>> buffer = new ArrayList<>();
         long currentSize = 0;
+        String lastKey = null;
 
-        // Perform k-way merge
         while (!queue.isEmpty()) {
             SSTableEntry entry = queue.poll();
             String key = entry.key;
-            String value = entry.value;
-            int iteratorIndex = entry.iteratorIndex;
-
-            if (currentSize >= config.getSegmentSize() && buffer.isEmpty()) {
-                newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
-                buffer.clear();
-                currentSize = 0;
+            if (lastKey == null || !lastKey.equals(key)) {
+                lastKey = key;
+                String value = entry.value;
+                buffer.add(new AbstractMap.SimpleEntry<>(key, value));
+                currentSize += 4 + key.getBytes(StandardCharsets.UTF_8).length +
+                               4 + (value != null ? value.getBytes(StandardCharsets.UTF_8).length : 0);
+                if (currentSize >= config.getSegmentSize()) {
+                    newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
+                    buffer.clear();
+                    currentSize = 0;
+                }
             }
-
-            // Add to buffer
-            buffer.add(new AbstractMap.SimpleEntry<>(key, value));
-            currentSize += 4 + key.getBytes(StandardCharsets.UTF_8).length +
-                    4 + (value != null ? value.getBytes(StandardCharsets.UTF_8).length : 0);
-
-            if (iterators[iteratorIndex].hasNext()) {
-                queue.offer(new SSTableEntry(iterators[iteratorIndex].next(), iteratorIndex));
+            if (iterators[entry.iteratorIndex].hasNext()) {
+                queue.offer(new SSTableEntry(iterators[entry.iteratorIndex].next(), entry.iteratorIndex));
             }
         }
-
+        
         if (!buffer.isEmpty()) {
             newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
         }
-
         for (SSTableIterator iterator : iterators) {
             iterator.close();
         }
