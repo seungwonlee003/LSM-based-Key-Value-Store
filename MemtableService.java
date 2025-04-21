@@ -11,7 +11,7 @@ class MemtableService {
 
     public String get(String key) { 
         rwLock.readLock().lock();
-        try{
+        try {
             String v = activeMemtable.get(key);
             if (v != null) return v;
 
@@ -27,7 +27,7 @@ class MemtableService {
     
     public void put(String k, String v) {
         rwLock.writeLock().lock();
-        try{
+        try {
             activeMemtable.put(key, value);
             if (activeMemtable.size() >= config.getMemtableThresholdBytes()) {
                 rotateMemtable();
@@ -56,7 +56,6 @@ class MemtableService {
     
     public Memtable pollFlushableMemtable() {
         return flushQueue.poll();
-
     }
 
     public boolean hasFlushableMemtable() {
