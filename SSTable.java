@@ -86,7 +86,7 @@ public class SSTable {
         return new SSTable(filePath, bloomFilter, index);
     }
 
-    public static List<SSTable> sortedRun(String dataDir, long sstMaxSize, int currentLevel, int l0TableCount, SSTable... tables) throws IOException {
+    public static List<SSTable> sortedRun(String dataDir, long sstMaxSize, int currentLevel, int currLevelCount, SSTable... tables) throws IOException {
         SSTableIterator[] iterators = Arrays.stream(tables)
                 .map(SSTableIterator::new)
                 .toArray(SSTableIterator[]::new);
@@ -94,12 +94,18 @@ public class SSTable {
         PriorityQueue<SSTableEntry> queue = new PriorityQueue<>((e1, e2) -> {
             int keyCompare = e1.key.compareTo(e2.key);
             if (keyCompare != 0) return keyCompare;
-            if (currentLevel == 0) {
-                boolean e1IsL0 = e1.iteratorIndex < l0TableCount;
-                boolean e2IsL0 = e2.iteratorIndex < l0TableCount;
-                if (e1IsL0 != e2IsL0) return e1IsL0 ? -1 : 1;
+        
+            // Determine levels based on iteratorIndex
+            int level1 = e1.iteratorIndex < currLevelCount ? currentLevel : currentLevel + 1;
+            int level2 = e2.iteratorIndex < currLevelCount ? currentLevel : currentLevel + 1;
+        
+            // Prioritize lower level (more recent)
+            if (level1 != level2) {
+                return Integer.compare(level1, level2); // Lower level first
             }
-            return Integer.compare(e2.iteratorIndex, e1.iteratorIndex);
+        
+            // Same level: lower iteratorIndex is newer
+            return Integer.compare(e1.iteratorIndex, e2.iteratorIndex);
         });
         
         for (int i = 0; i < iterators.length; i++) {
