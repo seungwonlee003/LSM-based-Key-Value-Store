@@ -38,13 +38,12 @@ public class CompactionService {
     }
 
     private void flushMemtables() {
-        if (!memtableService.hasFlushableMemtable()) {
-            return;
-        }
-
         memtableService.getLock().writeLock().lock();
         manifest.getLock().writeLock().lock();
         try {
+            if (!memtableService.hasFlushableMemtable()) {
+                return;
+            }
             Memtable mem = memtableService.pollFlushableMemtable();
             if (mem == null) {
                 return;
