@@ -60,26 +60,8 @@ public class CompactionService {
     private void runCompaction() {
         manifest.getLock().writeLock().lock();
         try {
-            int maxLevel = manifest.maxLevel();
-            for (int level = 0; level <= maxLevel; level++) {
-                List<SSTable> tables = manifest.getSSTables(level);
-                int threshold = config.getLevelThreshold(level);
-                if (tables.size() <= threshold) {
-                    continue;
-                }
 
-                List<SSTable> nextLevel = manifest.getSSTables(level + 1);
-                List<SSTable> inputs = new ArrayList<>(tables);
-                inputs.addAll(nextLevel);
-
-                long targetSize = config.getSegmentSize(); // 64MB
-                List<SSTable> merged = Compactor.mergeAndSplit(inputs, targetSize);
-
-                for (SSTable sstable : inputs){
-                    sstable.delete();
-                }
-
-                manifest.replace(level, tables, level + 1, merged);
+                
             }
         } finally {
             manifest.getLock().writeLock().unlock();
