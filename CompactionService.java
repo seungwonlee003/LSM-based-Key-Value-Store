@@ -60,13 +60,43 @@ public class CompactionService {
     private void runCompaction() {
         manifest.getLock().writeLock().lock();
         try {
+            int maxLevel = manifest.maxLevel();
+            int baseThreshold = config.getLevelZeroMaxSstNumber();
+            double increaseFactor = config.getLevelIncreaseFactor();
+            long sstMaxSize = config.getSstMaxSizeBytes();
 
-                
+            for (int level = 0; level <= maxLevel; level++) {
+                List<SSTable> currentLevelTables = manifest.getSSTables(level);
+                int threshold = (int) (baseThreshold * Math.pow(increaseFactor, level));
+
+                if (currentLevelTables.size() <= threshold) {
+                    continue;
+                }
+
+                // Collect tables to merge
+                List<SSTable> tablesToMerge = new ArrayList<>(currentLevelTables);
+                int nextLevel = level + 1;
+                List<SSTable> nextLevelTables = manifest.getSSTables(nextLevel);
+                tablesToMerge.addAll(nextLevelTables);
+
+                // Perform k-way merge
+                List<SSTable> newTables = SSTable.sortedRun("./data", sstMaxSize, tablesToMerge.toArray(new SSTable[0]));
+
+                // Update manifest
+                manifest.replace(level, currentLevelTables, nextLevel, newTables);
+
+                // Delete old SSTable files
+                for (SSTable table : tablesToMerge) {
+                    table.deleteFiles();
+                }
             }
+        } catch (Exception e) {
+            throw new RuntimeException("Compaction failed", e);
         } finally {
             manifest.getLock().writeLock().unlock();
         }
     }
+
 
     public void stop() {
         memtableFlusher.shutdown();
