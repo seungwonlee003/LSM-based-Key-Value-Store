@@ -74,7 +74,7 @@ public class CompactionService {
                 List<SSTable> nextLevelTables = manifest.getSSTables(nextLevel);
                 tablesToMerge.addAll(nextLevelTables);
 
-                List<SSTable> newTables = SSTable.sortedRun("./data", sstMaxSize, level, currentLevelTables.size(), tablesToMerge.toArray(new SSTable[0]));
+                List<SSTable> newTables = SSTable.sortedRun("./data", tablesToMerge.toArray(new SSTable[0]));
 
                 manifest.replace(level, currentLevelTables, nextLevel, newTables);
 
