@@ -79,7 +79,7 @@ public class CompactionService {
                 manifest.replace(level, currentLevelTables, nextLevel, newTables);
 
                 for (SSTable table : tablesToMerge) {
-                    table.deleteFiles();
+                    table.delete();
                 }
             }
         } finally {
