@@ -94,17 +94,6 @@ public class SSTable {
         PriorityQueue<SSTableEntry> queue = new PriorityQueue<>((e1, e2) -> {
             int keyCompare = e1.key.compareTo(e2.key);
             if (keyCompare != 0) return keyCompare;
-        
-            // Determine levels based on iteratorIndex
-            int level1 = e1.iteratorIndex < currLevelCount ? currentLevel : currentLevel + 1;
-            int level2 = e2.iteratorIndex < currLevelCount ? currentLevel : currentLevel + 1;
-        
-            // Prioritize lower level (more recent)
-            if (level1 != level2) {
-                return Integer.compare(level1, level2); // Lower level first
-            }
-        
-            // Same level: lower iteratorIndex is newer
             return Integer.compare(e1.iteratorIndex, e2.iteratorIndex);
         });
         
