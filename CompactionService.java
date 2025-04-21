@@ -65,7 +65,7 @@ public class CompactionService {
             for (int level = 0; level <= maxLevel; level++) {
                 List<SSTable> currentLevelTables = manifest.getSSTables(level);
 
-                if (currentLevelTables.size() <= levelThresholds.getLevel().threshold) {
+                if (currentLevelTables.size() <= config.getLevelThreshold(level)) {
                     continue;
                 }
 
