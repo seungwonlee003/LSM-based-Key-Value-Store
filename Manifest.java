@@ -97,13 +97,13 @@ public class Manifest {
     public void addSSTable(int level, SSTable sstable) throws IOException {
         rwLock.writeLock().lock();
         try {
-            levelMap.computeIfAbsent(level, k -> new ArrayList<>()).add(sstable);
+            levelMap.computeIfAbsent(level, k -> new ArrayList<>()).add(0, sstable);
             persist();
         } finally {
             rwLock.writeLock().unlock();
         }
     }
-
+    
     public List<SSTable> getSSTables(int level) {
         rwLock.readLock().lock();
         try {
