@@ -7,14 +7,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class Manifest {
     private final String filePath;
     private final String current;
-    private final Map<Integer, List<SSTable>> levelMap;
-    private final ReadWriteLock rwLock;
+    private final Map<Integer, List<SSTable>> levelMap = new HashMap<>();
+    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     public Manifest() throws IOException {
         this.filePath = "./data";
         this.current = filePath + "/CURRENT";
-        this.levelMap = new HashMap<>();
-        this.rwLock = new ReentrantReadWriteLock();
 
         Files.createDirectories(Paths.get(filePath));
 
@@ -32,31 +30,21 @@ public class Manifest {
     private void loadManifest(String manifestFile) throws IOException {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(filePath + "/" + manifestFile))) {
             Map<Integer, List<String>> serializedMap = (Map<Integer, List<String>>) ois.readObject();
-            rwLock.writeLock().lock();
-            try {
-                for (Map.Entry<Integer, List<String>> entry : serializedMap.entrySet()) {
-                    int level = entry.getKey();
-                    List<SSTable> sstables = new ArrayList<>();
-                    for (String sstablePath : entry.getValue()) {
-                        sstables.add(new SSTable(sstablePath));
-                    }
-                    levelMap.put(level, sstables);
+            for (Map.Entry<Integer, List<String>> entry : serializedMap.entrySet()) {
+                int level = entry.getKey();
+                List<SSTable> sstables = new ArrayList<>();
+                for (String sstablePath : entry.getValue()) {
+                    sstables.add(new SSTable(sstablePath));
                 }
-            } finally {
-                rwLock.writeLock().unlock();
+                levelMap.put(level, sstables);
             }
         }
     }
 
     public void persist() throws IOException {
-        rwLock.writeLock().lock();
-        try {
-            String newManifestFile = generateNextManifestFileName();
-            persistToFile(newManifestFile);
-            Files.writeString(Paths.get(current), newManifestFile);
-        } finally {
-            rwLock.writeLock().unlock();
-        }
+        String newManifestFile = generateNextManifestFileName();
+        persistToFile(newManifestFile);
+        Files.writeString(Paths.get(current), newManifestFile);
     }
 
     private void persistToFile(String manifestFile) throws IOException {
@@ -95,41 +83,21 @@ public class Manifest {
     }
 
     public void addSSTable(int level, SSTable sstable) throws IOException {
-        rwLock.writeLock().lock();
-        try {
-            levelMap.computeIfAbsent(level, k -> new ArrayList<>()).add(0, sstable);
-            persist();
-        } finally {
-            rwLock.writeLock().unlock();
-        }
+        levelMap.computeIfAbsent(level, k -> new ArrayList<>()).add(0, sstable);
+        persist();
     }
     
     public List<SSTable> getSSTables(int level) {
-        rwLock.readLock().lock();
-        try {
-            return new ArrayList<>(levelMap.getOrDefault(level, new ArrayList<>()));
-        } finally {
-            rwLock.readLock().unlock();
-        }
+        return new ArrayList<>(levelMap.getOrDefault(level, new ArrayList<>()));
     }
 
     public int maxLevel() {
-        rwLock.readLock().lock();
-        try {
-            return levelMap.isEmpty() ? -1 : levelMap.keySet().stream().max(Integer::compare).orElse(-1);
-        } finally {
-            rwLock.readLock().unlock();
-        }
+        return levelMap.isEmpty() ? -1 : levelMap.keySet().stream().max(Integer::compare).orElse(-1);
     }
 
     public void replace(int levelToClear, List<SSTable> oldTables, int targetLevel, List<SSTable> newTables) throws IOException {
-        rwLock.writeLock().lock();
-        try {
-            levelMap.remove(levelToClear);
-            levelMap.computeIfAbsent(targetLevel, k -> new ArrayList<>()).addAll(newTables);
-            persist();
-        } finally {
-            rwLock.writeLock().unlock();
-        }
+        levelMap.remove(levelToClear);
+        levelMap.computeIfAbsent(targetLevel, k -> new ArrayList<>()).addAll(newTables);
+        persist();
     }
 }
