@@ -54,7 +54,7 @@ public class SSTable {
         String filePath = "./data/sstable_" + System.nanoTime() + ".sst";
         BloomFilter bloomFilter = new BloomFilter(1000, 3);
         TreeMap<String, Long> index = new TreeMap<>();
-        long segmentSize = 64 * 1024 * 1024; // 64MB target
+        long segmentSize = config.getSegmentSize();
 
         try (RandomAccessFile file = new RandomAccessFile(filePath, "rw")) {
             Iterator<Map.Entry<String, String>> entries = memtable.iterator();
@@ -240,21 +240,13 @@ public class SSTable {
         private boolean closed;
 
         public SSTableIterator(SSTable sstable) {
-            try {
-                this.file = new RandomAccessFile(sstable.filePath, "r");
-                this.closed = false;
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to open SSTable for iteration: " + sstable.filePath, e);
-            }
+            this.file = new RandomAccessFile(sstable.filePath, "r");
+            this.closed = false;
         }
 
         @Override
         public boolean hasNext() {
-            try {
-                return !closed && file.getFilePointer() < file.length();
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to check SSTable iterator: ", e);
-            }
+            return !closed && file.getFilePointer() < file.length();
         }
 
         @Override
@@ -262,33 +254,25 @@ public class SSTable {
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            try {
-                int keyLength = file.readInt();
-                byte[] keyBytes = new byte[keyLength];
-                file.readFully(keyBytes);
-                String key = new String(keyBytes, StandardCharsets.UTF_8);
+            int keyLength = file.readInt();
+            byte[] keyBytes = new byte[keyLength];
+            file.readFully(keyBytes);
+            String key = new String(keyBytes, StandardCharsets.UTF_8);
 
-                int valueLength = file.readInt();
-                byte[] valueBytes = new byte[valueLength];
-                if (valueLength > 0) {
-                    file.readFully(valueBytes);
-                }
-                String value = valueLength > 0 ? new String(valueBytes, StandardCharsets.UTF_8) : null;
-
-                return new AbstractMap.SimpleEntry<>(key, value);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to read next entry from SSTable: ", e);
+            int valueLength = file.readInt();
+            byte[] valueBytes = new byte[valueLength];
+            if (valueLength > 0) {
+                file.readFully(valueBytes);
             }
+            String value = valueLength > 0 ? new String(valueBytes, StandardCharsets.UTF_8) : null;
+
+            return new AbstractMap.SimpleEntry<>(key, value);
         }
 
         public void close() {
             if (!closed) {
-                try {
-                    file.close();
-                    closed = true;
-                } catch (IOException e) {
-                    throw new RuntimeException("Failed to close SSTable iterator: ", e);
-                }
+                file.close();
+                closed = true;
             }
         }
     }
