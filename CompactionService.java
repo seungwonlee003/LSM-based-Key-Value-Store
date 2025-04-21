@@ -80,7 +80,7 @@ public class CompactionService {
                 tablesToMerge.addAll(nextLevelTables);
 
                 // Perform k-way merge
-                List<SSTable> newTables = SSTable.sortedRun("./data", sstMaxSize, tablesToMerge.toArray(new SSTable[0]));
+                List<SSTable> newTables = SSTable.sortedRun("./data", sstMaxSize, level, currentLevelTables.size(), tablesToMerge.toArray(new SSTable[0]));
 
                 // Update manifest
                 manifest.replace(level, currentLevelTables, nextLevel, newTables);
