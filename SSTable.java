@@ -86,7 +86,7 @@ public class SSTable {
         return new SSTable(filePath, bloomFilter, index);
     }
 
-    public static List<SSTable> sortedRun(String dataDir, long sstMaxSize, int currentLevel, int currLevelCount, SSTable... tables) throws IOException {
+    public static List<SSTable> sortedRun(String dataDir, SSTable... tables) throws IOException {
         SSTableIterator[] iterators = Arrays.stream(tables)
                 .map(SSTableIterator::new)
                 .toArray(SSTableIterator[]::new);
