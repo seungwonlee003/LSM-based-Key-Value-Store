@@ -95,10 +95,10 @@ public class Manifest {
         return levelMap.isEmpty() ? -1 : levelMap.keySet().stream().max(Integer::compare).orElse(-1);
     }
 
-    public void replace(int levelToClear, List<SSTable> oldTables, int targetLevel, List<SSTable> newTables) throws IOException {
+    public void replace(int levelToClear, List<SSTable> newTables) throws IOException {
         levelMap.remove(levelToClear);
         levelMap.remove(levelToClear + 1);
-        levelMap.computeIfAbsent(targetLevel, k -> new ArrayList<>()).addAll(newTables);
+        levelMap.computeIfAbsent(levelToClear + 1, k -> new ArrayList<>()).addAll(newTables);
         persist();
     }
 }
