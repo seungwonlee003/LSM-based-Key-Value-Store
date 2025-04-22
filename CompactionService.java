@@ -56,6 +56,7 @@ public class CompactionService {
         }
     }
 
+    // acquires read lock during the merging between levels so it prevents concurrent access to sstable creation (e.g. memtable flusher op)
     private void runCompaction() {
         int maxLevel = manifest.maxLevel();
     
@@ -76,10 +77,12 @@ public class CompactionService {
                 List<SSTable> newTables = SSTable.sortedRun("./data", tablesToMerge.toArray(new SSTable[0]));
                 
                 manifest.getLock().readLock().unlock();
+                
+                // acquires write lock during the replace method because references to newly merged table should be set atomically.
                 manifest.getLock().writeLock().lock();
                 try {
-                    manifest.replace(level, currentLevelTables, nextLevel, newTables);
-                    
+                    manifest.replace(level, newTables);
+                    // delete orphaned sstables
                     for (SSTable table : tablesToMerge) {
                         table.delete();
                     }
