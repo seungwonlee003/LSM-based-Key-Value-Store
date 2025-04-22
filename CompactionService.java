@@ -57,36 +57,43 @@ public class CompactionService {
     }
 
     private void runCompaction() {
-        manifest.getLock().writeLock().lock();
-        try {
-            int maxLevel = manifest.maxLevel();
-
-            for (int level = 0; level <= maxLevel; level++) {
+        int maxLevel = manifest.maxLevel();
+    
+        for (int level = 0; level <= maxLevel; level++) {
+            manifest.getLock().readLock().lock();
+            try {
                 List<SSTable> currentLevelTables = manifest.getSSTables(level);
-
+    
                 if (currentLevelTables.size() <= config.getLevelThreshold(level)) {
                     continue;
                 }
-
+    
                 List<SSTable> tablesToMerge = new ArrayList<>(currentLevelTables);
                 int nextLevel = level + 1;
                 List<SSTable> nextLevelTables = manifest.getSSTables(nextLevel);
                 tablesToMerge.addAll(nextLevelTables);
-
+                
                 List<SSTable> newTables = SSTable.sortedRun("./data", tablesToMerge.toArray(new SSTable[0]));
-
-                manifest.replace(level, currentLevelTables, nextLevel, newTables);
-
-                for (SSTable table : tablesToMerge) {
-                    table.delete();
+                
+                manifest.getLock().readLock().unlock();
+                manifest.getLock().writeLock().lock();
+                try {
+                    manifest.replace(level, currentLevelTables, nextLevel, newTables);
+                    
+                    for (SSTable table : tablesToMerge) {
+                        table.delete();
+                    }
+                } finally {
+                    manifest.getLock().writeLock().unlock();
+                }
+            } finally {
+                if (manifest.getLock().readLock().tryLock()) {
+                    manifest.getLock().readLock().unlock();
                 }
             }
-        } finally {
-            manifest.getLock().writeLock().unlock();
         }
     }
-
-
+    
     public void stop() {
         memtableFlusher.shutdown();
         compactionRunner.shutdown();
