@@ -97,6 +97,7 @@ public class Manifest {
 
     public void replace(int levelToClear, List<SSTable> oldTables, int targetLevel, List<SSTable> newTables) throws IOException {
         levelMap.remove(levelToClear);
+        levelMap.remove(levelToClear + 1);
         levelMap.computeIfAbsent(targetLevel, k -> new ArrayList<>()).addAll(newTables);
         persist();
     }
