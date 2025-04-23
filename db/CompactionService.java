@@ -40,37 +40,47 @@ public class CompactionService {
     // Flushes memtables to SSTables, minimizing read blocking. Reads are only blocked during flushQueue removal
     // and manifest updates to prevent inconsistent reads.
     private void flushMemtables() {
-        memtableService.getLock().readLock().lock();
+        Memtable mem = getFlushableMemtable();
+        if (mem == null) {
+            return;
+        }
+    
+        SSTable sstable = createSSTableFromMemtable(mem);
+        updateFlushQueueAndManifest(mem, sstable);
+    }
+    
+    private Memtable getFlushableMemtable() {
+        Lock readLock = memtableService.getLock().readLock();
+        readLock.lock();
         try {
             if (!memtableService.hasFlushableMemtable()) {
-                return;
+                return null;
             }
-            // Select memtable without removing it to allow concurrent reads
-            Memtable mem = memtableService.peekFlushableMemtable();
-            if (mem == null) {
-                return;
-            }
+            return memtableService.peekFlushableMemtable();
+        } finally {
+            readLock.unlock();
+        }
+    }
     
-            SSTable sstable = SSTable.createSSTableFromMemtable(mem);
+    private SSTable createSSTableFromMemtable(Memtable mem) {
+        // No locks needed; this is a read-only operation on the memtable
+        return SSTable.createSSTableFromMemtable(mem);
+    }
     
-            // Modify flushQueue and manifest under write lock to ensure consistency
-            memtableService.getLock().readLock().unlock();
-            memtableService.getLock().writeLock().lock();
+    private void updateFlushQueueAndManifest(Memtable mem, SSTable sstable) {
+        Lock writeLock = memtableService.getLock().writeLock();
+        writeLock.lock();
+        try {
+            memtableService.removeFlushableMemtable(mem); // Modify flushQueue
+            Lock manifestWriteLock = manifest.getLock().writeLock();
+            manifestWriteLock.lock();
             try {
-                memtableService.removeFlushableMemtable(mem); // Remove from flushQueue
-                manifest.getLock().writeLock().lock();
-                try {
-                    manifest.addSSTable(0, sstable);
-                } finally {
-                    manifest.getLock().writeLock().unlock();
-                }
+                manifest.addSSTable(0, sstable); // Update manifest
             } finally {
-                memtableService.getLock().writeLock().unlock();
+                manifestWriteLock.unlock();
             }
         } finally {
-            if (memtableService.getLock().readLock().tryLock()) {
-                memtableService.getLock().readLock().unlock();
-            }
+            writeLock.unlock();
         }
     }
     
@@ -80,39 +90,50 @@ public class CompactionService {
         int maxLevel = manifest.maxLevel();
     
         for (int level = 0; level <= maxLevel; level++) {
-            manifest.getLock().readLock().lock();
-            try {
-                List<SSTable> currentLevelTables = manifest.getSSTables(level);
-    
-                if (currentLevelTables.size() <= config.getLevelThreshold(level)) {
-                    continue;
-                }
-    
-                List<SSTable> tablesToMerge = new ArrayList<>(currentLevelTables);
-                int nextLevel = level + 1;
-                List<SSTable> nextLevelTables = manifest.getSSTables(nextLevel);
-                tablesToMerge.addAll(nextLevelTables);
-    
-                List<SSTable> newTables = SSTable.sortedRun("./data", tablesToMerge.toArray(new SSTable[0]));
-    
-                manifest.getLock().readLock().unlock();
-    
-                // Update manifest atomically under write lock to ensure consistent SSTable references
-                manifest.getLock().writeLock().lock();
-                try {
-                    manifest.replace(level, newTables);
-                    // Delete obsolete SSTables
-                    for (SSTable table : tablesToMerge) {
-                        table.delete();
-                    }
-                } finally {
-                    manifest.getLock().writeLock().unlock();
-                }
-            } finally {
-                if (manifest.getLock().readLock().tryLock()) {
-                    manifest.getLock().readLock().unlock();
-                }
+            List<SSTable> tablesToCompact = getTablesToCompact(level);
+            if (tablesToCompact == null) {
+                continue;
             }
+    
+            List<SSTable> newTables = compactTables(tablesToCompact);
+            updateManifest(level, tablesToCompact, newTables);
+        }
+    }
+    
+    private List<SSTable> getTablesToCompact(int level) {
+        Lock readLock = manifest.getLock().readLock();
+        readLock.lock();
+        try {
+            List<SSTable> currentLevelTables = manifest.getSSTables(level);
+            if (currentLevelTables.size() <= config.getLevelThreshold(level)) {
+                return null;
+            }
+    
+            List<SSTable> tablesToMerge = new ArrayList<>(currentLevelTables);
+            int nextLevel = level + 1;
+            List<SSTable> nextLevelTables = manifest.getSSTables(nextLevel);
+            tablesToMerge.addAll(nextLevelTables);
+            return tablesToMerge;
+        } finally {
+            readLock.unlock();
+        }
+    }
+    
+    private List<SSTable> compactTables(List<SSTable> tablesToMerge) {
+        // No locks needed; this is an independent operation
+        return SSTable.sortedRun("./data", tablesToMerge.toArray(new SSTable[0]));
+    }
+    
+    private void updateManifest(int level, List<SSTable> oldTables, List<SSTable> newTables) {
+        Lock writeLock = manifest.getLock().writeLock();
+        writeLock.lock();
+        try {
+            manifest.replace(level, newTables);
+            for (SSTable table : oldTables) {
+                table.delete();
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
     
