@@ -3,9 +3,6 @@ public class Memtable implements Iterable<Map.Entry<String, String>> {
     private final NavigableMap<String, String> table = new TreeMap<>();
     private long sizeBytes = 0L;
 
-    public Memtable(){
-    }
-
     public String get(String key) {
         return table.get(key);
     }
