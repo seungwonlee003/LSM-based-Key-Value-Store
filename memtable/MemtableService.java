@@ -61,7 +61,15 @@ class MemtableService {
     public boolean hasFlushableMemtable() {
         return !flushQueue.isEmpty();
     }
-
+    
+    public Memtable peekFlushableMemtable() {
+        return flushQueue.peek();
+    }
+    
+    public void removeFlushableMemtable(Memtable memtable) {
+        flushQueue.remove(memtable);
+    }
+    
     public ReadWriteLock getLock(){
         return rwLock;
     }
