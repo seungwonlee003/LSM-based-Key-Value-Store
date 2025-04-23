@@ -37,26 +37,45 @@ public class CompactionService {
         );
     }
 
+    // Flushes memtables to SSTables, minimizing read blocking. Reads are only blocked during flushQueue removal
+    // and manifest updates to prevent inconsistent reads.
     private void flushMemtables() {
-        memtableService.getLock().writeLock().lock();
-        manifest.getLock().writeLock().lock();
+        memtableService.getLock().readLock().lock();
         try {
             if (!memtableService.hasFlushableMemtable()) {
                 return;
             }
-            Memtable mem = memtableService.pollFlushableMemtable();
+            // Select memtable without removing it to allow concurrent reads
+            Memtable mem = memtableService.peekFlushableMemtable();
             if (mem == null) {
                 return;
             }
+    
             SSTable sstable = SSTable.createSSTableFromMemtable(mem);
-            manifest.addSSTable(0, sstable);
+    
+            // Modify flushQueue and manifest under write lock to ensure consistency
+            memtableService.getLock().readLock().unlock();
+            memtableService.getLock().writeLock().lock();
+            try {
+                memtableService.removeFlushableMemtable(mem); // Remove from flushQueue
+                manifest.getLock().writeLock().lock();
+                try {
+                    manifest.addSSTable(0, sstable);
+                } finally {
+                    manifest.getLock().writeLock().unlock();
+                }
+            } finally {
+                memtableService.getLock().writeLock().unlock();
+            }
         } finally {
-            manifest.getLock().writeLock().unlock();
-            memtableService.getLock().writeLock().unlock();
+            if (memtableService.getLock().readLock().tryLock()) {
+                memtableService.getLock().readLock().unlock();
+            }
         }
     }
-
-    // acquires read lock during the merging between levels so it prevents concurrent access to sstable creation (e.g. memtable flusher op)
+    
+    // Runs compaction, minimizing read blocking. Reads are only blocked during manifest updates
+    // to prevent inconsistent SSTable references.
     private void runCompaction() {
         int maxLevel = manifest.maxLevel();
     
@@ -73,16 +92,16 @@ public class CompactionService {
                 int nextLevel = level + 1;
                 List<SSTable> nextLevelTables = manifest.getSSTables(nextLevel);
                 tablesToMerge.addAll(nextLevelTables);
-                
+    
                 List<SSTable> newTables = SSTable.sortedRun("./data", tablesToMerge.toArray(new SSTable[0]));
-                
+    
                 manifest.getLock().readLock().unlock();
-                
-                // acquires write lock during the replace method because references to newly merged table should be set atomically.
+    
+                // Update manifest atomically under write lock to ensure consistent SSTable references
                 manifest.getLock().writeLock().lock();
                 try {
                     manifest.replace(level, newTables);
-                    // delete orphaned sstables
+                    // Delete obsolete SSTables
                     for (SSTable table : tablesToMerge) {
                         table.delete();
                     }
