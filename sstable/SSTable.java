@@ -1,24 +1,26 @@
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-
 public class SSTable {
     private final String filePath;
     private final BloomFilter bloomFilter;
     private final NavigableMap<String, Long> index; // sparse index
+    private String minKey;
+    private String maxKey;
     private static final int INDEX_INTERVAL = 100;  // index every 100th key
 
     private SSTable(String filePath) throws IOException {
         this.filePath = filePath;
-        this.index = new TreeMap<String, Long>();
+        this.index = new TreeMap<>();
         this.bloomFilter = new BloomFilter(1000, 3);
+        this.minKey = null;
+        this.maxKey = null;
         init();
     }
 
-    private SSTable(String filePath, BloomFilter bloomFilter, NavigableMap<String, Long> index) {
+    private SSTable(String filePath, BloomFilter bloomFilter, NavigableMap<String, Long> index, String minKey, String maxKey) {
         this.filePath = filePath;
         this.bloomFilter = bloomFilter;
         this.index = index;
+        this.minKey = minKey;
+        this.maxKey = maxKey;
     }
 
     public void init() throws IOException {
@@ -26,12 +28,19 @@ public class SSTable {
         try {
             long offset = 0;
             int count = 0;
+            String firstKey = null;
+            String lastKey = null;
 
             while (file.getFilePointer() < file.length()) {
                 int keyLength = file.readInt();
                 byte[] keyBytes = new byte[keyLength];
                 file.readFully(keyBytes);
                 String key = new String(keyBytes, StandardCharsets.UTF_8);
+
+                if (firstKey == null) {
+                    firstKey = key;
+                }
+                lastKey = key;
 
                 int valueLength = file.readInt();
                 byte[] valueBytes = new byte[valueLength];
@@ -48,6 +57,8 @@ public class SSTable {
                 offset += 4 + keyLength + 4 + valueLength;
                 count++;
             }
+            this.minKey = firstKey;
+            this.maxKey = lastKey;
         } finally {
             file.close();
         }
@@ -56,8 +67,10 @@ public class SSTable {
     public static SSTable createSSTableFromMemtable(Memtable memtable) throws IOException {
         String filePath = "./data/sstable_" + System.nanoTime() + ".sst";
         BloomFilter bloomFilter = new BloomFilter(1000, 3);
-        TreeMap<String, Long> index = new TreeMap<String, Long>();
+        TreeMap<String, Long> index = new TreeMap<>();
         long segmentSize = Config.getInstance().getSegmentSize();
+        String minKey = null;
+        String maxKey = null;
 
         RandomAccessFile file = new RandomAccessFile(filePath, "rw");
         try {
@@ -70,6 +83,11 @@ public class SSTable {
                 String key = entry.getKey();
                 String value = entry.getValue();
                 bloomFilter.add(key);
+
+                if (minKey == null) {
+                    minKey = key;
+                }
+                maxKey = key;
 
                 byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
                 byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
@@ -89,7 +107,7 @@ public class SSTable {
             file.close();
         }
 
-        return new SSTable(filePath, bloomFilter, index);
+        return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
     }
 
     public static List<SSTable> sortedRun(String dataDir, List<SSTable> tables) throws IOException {
@@ -157,6 +175,8 @@ public class SSTable {
         String filePath = dataDir + "/sstable_" + System.nanoTime() + ".sst";
         BloomFilter bloomFilter = new BloomFilter(1000, 3);
         TreeMap<String, Long> index = new TreeMap<String, Long>();
+        String minKey = null;
+        String maxKey = null;
         long offset = 0;
         int count = 0;
 
@@ -166,6 +186,11 @@ public class SSTable {
                 String key = entry.getKey();
                 String value = entry.getValue();
                 bloomFilter.add(key);
+
+                if (minKey == null) {
+                    minKey = key;
+                }
+                maxKey = key;
 
                 byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
                 byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
@@ -185,7 +210,7 @@ public class SSTable {
             file.close();
         }
 
-        return new SSTable(filePath, bloomFilter, index);
+        return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
     }
 
     public boolean mightContain(String key) {
@@ -193,6 +218,10 @@ public class SSTable {
     }
 
     public String get(String key) {
+        if (key.compareTo(minKey) < 0 || key.compareTo(maxKey) > 0) {
+            return null;
+        }
+
         if (!bloomFilter.mightContain(key)) {
             return null;
         }
