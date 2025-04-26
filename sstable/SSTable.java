@@ -3,9 +3,7 @@ package sstable;
 import memtable.Memtable;
 import util.BloomFilter;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -21,17 +19,13 @@ public class SSTable {
     static class BlockInfo {
         long offset;
         long length;
-        String firstKey;
-        String lastKey;
 
-        BlockInfo(long offset, long length, String firstKey, String lastKey) {
+        BlockInfo(long offset, long length) {
             this.offset = offset;
             this.length = length;
-            this.firstKey = firstKey;
-            this.lastKey = lastKey;
         }
     }
-    
+
     public SSTable(String filePath) throws IOException {
         this.filePath = filePath;
         this.index = new TreeMap<>();
@@ -56,7 +50,6 @@ public class SSTable {
             long blockStartOffset = 0;
             int currentBlockSize = 0;
             String firstKeyOfBlock = null;
-            String lastKeyOfBlock = null;
 
             while (file.getFilePointer() < file.length()) {
                 int keyLength = file.readInt();
@@ -76,13 +69,12 @@ public class SSTable {
                     blockStartOffset = currentOffset;
                 } else if (currentBlockSize + pairSize > BLOCK_SIZE) {
                     long blockLength = currentOffset - blockStartOffset;
-                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength, firstKeyOfBlock, lastKeyOfBlock));
+                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
                     firstKeyOfBlock = key;
                     blockStartOffset = currentOffset;
                     currentBlockSize = 0;
                 }
 
-                lastKeyOfBlock = key;
                 currentOffset += pairSize;
                 currentBlockSize += pairSize;
                 bloomFilter.add(key);
@@ -95,7 +87,7 @@ public class SSTable {
 
             if (currentBlockSize > 0) {
                 long blockLength = currentOffset - blockStartOffset;
-                index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength, firstKeyOfBlock, lastKeyOfBlock));
+                index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
             }
         } finally {
             file.close();
@@ -116,7 +108,6 @@ public class SSTable {
             long blockStartOffset = 0;
             int currentBlockSize = 0;
             String firstKeyOfBlock = null;
-            String lastKeyOfBlock = null;
 
             while (entries.hasNext()) {
                 Map.Entry<String, String> entry = entries.next();
@@ -135,7 +126,7 @@ public class SSTable {
 
                 if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
                     long blockLength = currentOffset - blockStartOffset;
-                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength, firstKeyOfBlock, lastKeyOfBlock));
+                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
                     firstKeyOfBlock = key;
                     blockStartOffset = currentOffset;
                     currentBlockSize = 0;
@@ -143,8 +134,6 @@ public class SSTable {
                 if (currentBlockSize == 0) {
                     firstKeyOfBlock = key;
                 }
-
-                lastKeyOfBlock = key;
 
                 file.writeInt(keyBytes.length);
                 file.write(keyBytes);
@@ -157,14 +146,14 @@ public class SSTable {
 
             if (currentBlockSize > 0) {
                 long blockLength = currentOffset - blockStartOffset;
-                index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength, firstKeyOfBlock, lastKeyOfBlock));
+                index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
             }
         } finally {
             file.close();
         }
         return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
     }
-        
+
     public static List<SSTable> sortedRun(String dataDir, List<SSTable> tables) throws IOException {
         SSTableIterator[] iterators = new SSTableIterator[tables.size()];
         for (int i = 0; i < tables.size(); i++) {
@@ -186,7 +175,6 @@ public class SSTable {
             if (iterators[i].hasNext()) {
                 Map.Entry<String, String> nextEntry = iterators[i].next();
                 queue.offer(new SSTableEntry(nextEntry, i));
-            } else {
             }
         }
 
@@ -194,7 +182,6 @@ public class SSTable {
         List<Map.Entry<String, String>> buffer = new ArrayList<>();
         long currentSize = 0;
         String lastKey = null;
-        int entryCount = 0;
 
         while (!queue.isEmpty()) {
             SSTableEntry entry = queue.poll();
@@ -205,7 +192,6 @@ public class SSTable {
                 buffer.add(new AbstractMap.SimpleEntry<>(key, value));
                 currentSize += 4 + key.getBytes(StandardCharsets.UTF_8).length +
                         4 + (value != null ? value.getBytes(StandardCharsets.UTF_8).length : 0);
-                entryCount++;
                 if (currentSize >= SSTABLE_SIZE_THRESHOLD) {
                     newSSTables.add(createSSTableFromBuffer(dataDir, buffer));
                     buffer.clear();
@@ -232,66 +218,54 @@ public class SSTable {
 
     private static SSTable createSSTableFromBuffer(String dataDir, List<Map.Entry<String, String>> buffer) throws IOException {
         String filePath = dataDir + "/sstable_" + System.nanoTime() + ".sst";
-        // Initialize BloomFilter and block-based index
         BloomFilter bloomFilter = new BloomFilter(1000, 3);
         TreeMap<String, BlockInfo> index = new TreeMap<>();
         String minKey = null;
         String maxKey = null;
-    
-        // Variables for block management
+
         long currentOffset = 0L;
         long blockStartOffset = 0L;
         int currentBlockSize = 0;
         String firstKeyOfBlock = null;
-        String lastKeyOfBlock = null;
-    
+
         try (RandomAccessFile file = new RandomAccessFile(filePath, "rw")) {
             for (Map.Entry<String, String> entry : buffer) {
                 String key = entry.getKey();
                 String value = entry.getValue();
-    
-                // Update Bloom filter and global key range
+
                 bloomFilter.add(key);
                 if (minKey == null) minKey = key;
                 maxKey = key;
-    
+
                 byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
                 byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
                 int pairSize = Integer.BYTES + keyBytes.length + Integer.BYTES + valueBytes.length;
-    
-                // Start a new block if exceeding BLOCK_SIZE
+
                 if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
                     long blockLength = currentOffset - blockStartOffset;
-                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength, firstKeyOfBlock, lastKeyOfBlock));
-                    // Reset for next block
+                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
                     firstKeyOfBlock = key;
                     blockStartOffset = currentOffset;
                     currentBlockSize = 0;
                 }
-                // Mark first key when starting a fresh block
                 if (currentBlockSize == 0) {
                     firstKeyOfBlock = key;
                     blockStartOffset = currentOffset;
                 }
-                lastKeyOfBlock = key;
-    
-                // Write key-value pair
+
                 file.writeInt(keyBytes.length);
                 file.write(keyBytes);
                 file.writeInt(valueBytes.length);
                 file.write(valueBytes);
-    
-                // Update offsets
+
                 currentOffset += pairSize;
                 currentBlockSize += pairSize;
             }
-            // Flush the final block
             if (currentBlockSize > 0) {
                 long blockLength = currentOffset - blockStartOffset;
-                index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength, firstKeyOfBlock, lastKeyOfBlock));
+                index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
             }
         }
-        // Return SSTable with block index and Bloom filter
         return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
     }
 
