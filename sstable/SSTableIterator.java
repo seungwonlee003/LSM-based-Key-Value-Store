@@ -8,21 +8,17 @@ import java.util.NoSuchElementException;
 public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
     private final RandomAccessFile file;
     private final Iterator<Map.Entry<String, SSTable.BlockInfo>> indexIterator;
-    private final long fileLength;
     private boolean closed;
     private ByteArrayInputStream blockBuffer;
     private DataInputStream blockDataIn;
-    private long currentBlockEnd;
 
     public SSTableIterator(SSTable sstable) {
         try {
             this.file = new RandomAccessFile(sstable.getFilePath(), "r");
             this.indexIterator = sstable.getIndex().entrySet().iterator();
-            this.fileLength = file.length();
             this.closed = false;
             this.blockBuffer = null;
             this.blockDataIn = null;
-            this.currentBlockEnd = 0;
         } catch (IOException e) {
             throw new RuntimeException("Failed to open SSTable file for iteration", e);
         }
@@ -37,7 +33,7 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
                 file.getFilePointer() < file.length()
             );
         } catch (IOException e) {
-            throw new RuntimeException("Error checking file pointer", e);
+            throw new RuntimeException("Error checking iterator state", e);
         }
     }
 
@@ -48,7 +44,7 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
         }
 
         try {
-            if (blockDataIn == null || file.getFilePointer() >= currentBlockEnd) {
+            if (blockDataIn == null || blockDataIn.available() == 0) {
                 loadNextBlock();
             }
 
@@ -68,6 +64,7 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
         }
     }
 
+    // Load next block (~4KB) from disk
     private void loadNextBlock() throws IOException {
         if (!indexIterator.hasNext()) {
             throw new IOException("No more blocks available in index");
@@ -84,8 +81,7 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
         blockBuffer = new ByteArrayInputStream(blockData);
         blockDataIn = new DataInputStream(blockBuffer);
 
-        currentBlockEnd = blockInfo.offset + blockInfo.length;
-        file.seek(currentBlockEnd);
+        file.seek(blockInfo.offset + blockInfo.length);
     }
 
     public void close() {
