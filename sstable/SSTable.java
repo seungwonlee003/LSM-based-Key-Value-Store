@@ -42,11 +42,10 @@ public class SSTable {
         this.minKey = minKey;
         this.maxKey = maxKey;
     }
-        
+    
     public void init() throws IOException {
         try (RandomAccessFile file = new RandomAccessFile(filePath, "r");
-             DataInputStream dataIn = new DataInputStream(
-                 new BufferedInputStream(new FileInputStream(file.getFD()), BLOCK_SIZE))) {
+             DataInputStream dataIn = new DataInputStream(new BufferedInputStream(new FileInputStream(file.getFD()), BLOCK_SIZE))) {
             long currentOffset = 0;
             long blockStartOffset = 0;
             int currentBlockSize = 0;
@@ -58,6 +57,7 @@ public class SSTable {
                 } catch (EOFException eof) {
                     break;  // end of file → exit loop
                 }
+                
                 byte[] keyBytes = new byte[keyLength];
                 dataIn.readFully(keyBytes);
                 String key = new String(keyBytes, StandardCharsets.UTF_8);
@@ -81,7 +81,7 @@ public class SSTable {
                     blockStartOffset = currentOffset;
                     currentBlockSize = 0;
                 }
-    
+                
                 currentOffset += pairSize;
                 currentBlockSize += pairSize;
                 bloomFilter.add(key);
@@ -100,64 +100,62 @@ public class SSTable {
     }
 
     public static SSTable createSSTableFromMemtable(Memtable memtable) throws IOException {
-            String filePath = "./data/sstable_" + System.nanoTime() + ".sst";
-            BloomFilter bloomFilter = new BloomFilter(1000, 3);
-            TreeMap<String, BlockInfo> index = new TreeMap<>();
-            String minKey = null;
-            String maxKey = null;
-    
-            try (RandomAccessFile file = new RandomAccessFile(filePath, "rw");
-                 BufferedOutputStream bufferedOut = new BufferedOutputStream(new FileOutputStream(file.getFD()), BLOCK_SIZE);
-                 DataOutputStream dataOut = new DataOutputStream(bufferedOut)) {
-                Iterator<Map.Entry<String, String>> entries = memtable.iterator();
-                long currentOffset = 0;
-                long blockStartOffset = 0;
-                int currentBlockSize = 0;
-                String firstKeyOfBlock = null;
-            
-                while (entries.hasNext()) {
-                    Map.Entry<String, String> entry = entries.next();
-                    String key = entry.getKey();
-                    String value = entry.getValue();
-                    bloomFilter.add(key);
-            
-                    if (minKey == null) {
-                        minKey = key;
-                    }
-                    maxKey = key;
-            
-                    byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-                    byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
-                    int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
-            
-                    if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
-                        long blockLength = currentOffset - blockStartOffset;
-                        index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
-                        firstKeyOfBlock = key;
-                        blockStartOffset = currentOffset;
-                        currentBlockSize = 0;
-                    }
-                    if (currentBlockSize == 0) {
-                        firstKeyOfBlock = key;
-                    }
-            
-                    dataOut.writeInt(keyBytes.length);
-                    dataOut.write(keyBytes);
-                    dataOut.writeInt(valueBytes.length);
-                    dataOut.write(valueBytes);
-            
-                    currentOffset += pairSize;
-                    currentBlockSize += pairSize;
+        String filePath = "./data/sstable_" + System.nanoTime() + ".sst";
+        BloomFilter bloomFilter = new BloomFilter(1000, 3);
+        TreeMap<String, BlockInfo> index = new TreeMap<>();
+        String minKey = null;
+        String maxKey = null;
+
+        try (RandomAccessFile file = new RandomAccessFile(filePath, "rw");
+             BufferedOutputStream bufferedOut = new BufferedOutputStream(new FileOutputStream(file.getFD()), BLOCK_SIZE);
+             DataOutputStream dataOut = new DataOutputStream(bufferedOut)) {
+            Iterator<Map.Entry<String, String>> entries = memtable.iterator();
+            long currentOffset = 0;
+            long blockStartOffset = 0;
+            int currentBlockSize = 0;
+            String firstKeyOfBlock = null;
+        
+            while (entries.hasNext()) {
+                Map.Entry<String, String> entry = entries.next();
+                String key = entry.getKey();
+                String value = entry.getValue();
+                bloomFilter.add(key);
+        
+                if (minKey == null) {
+                    minKey = key;
                 }
-    
-                if (currentBlockSize > 0) {
+                maxKey = key;
+        
+                byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+                byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
+                int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
+        
+                if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
                     long blockLength = currentOffset - blockStartOffset;
                     index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
+                    firstKeyOfBlock = key;
+                    blockStartOffset = currentOffset;
+                    currentBlockSize = 0;
                 }
+                if (currentBlockSize == 0) {
+                    firstKeyOfBlock = key;
+                }
+        
+                dataOut.writeInt(keyBytes.length);
+                dataOut.write(keyBytes);
+                dataOut.writeInt(valueBytes.length);
+                dataOut.write(valueBytes);
+        
+                currentOffset += pairSize;
+                currentBlockSize += pairSize;
             }
-    
-            return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
+
+            if (currentBlockSize > 0) {
+                long blockLength = currentOffset - blockStartOffset;
+                index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
+            }
         }
+        return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
     }
 
     public static List<SSTable> sortedRun(String dataDir, List<SSTable> tables) throws IOException {
@@ -278,8 +276,6 @@ public class SSTable {
                 index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
             }
         }
-    
-        // Return new SSTable with constructed metadata
         return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
     }
 
