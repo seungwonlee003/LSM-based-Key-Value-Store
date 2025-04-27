@@ -68,17 +68,19 @@ public class SSTable {
     
                 int pairSize = 4 + keyLength + 4 + valueLength;
 
-                if (currentBlockSize == 0) {
-                    firstKeyOfBlock = key;
-                    blockStartOffset = currentOffset;
-                } else if (currentBlockSize + pairSize > BLOCK_SIZE) {
+                if (currentBlockSize + pairSize > BLOCK_SIZE) {
                     long blockLength = currentOffset - blockStartOffset;
                     index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
                     firstKeyOfBlock = key;
                     blockStartOffset = currentOffset;
                     currentBlockSize = 0;
                 }
-                
+
+                if (currentBlockSize == 0) {
+                    firstKeyOfBlock = key;
+                    blockStartOffset = currentOffset;
+                }
+
                 currentOffset += pairSize;
                 currentBlockSize += pairSize;
                 bloomFilter.add(key);
@@ -125,7 +127,7 @@ public class SSTable {
                 
                 int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
         
-                if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
+                if (currentBlockSize + pairSize > BLOCK_SIZE) {
                     long blockLength = currentOffset - blockStartOffset;
                     index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
                     firstKeyOfBlock = key;
@@ -228,7 +230,7 @@ public class SSTable {
                 byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
                 int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
 
-                if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
+                if (currentBlockSize + pairSize > BLOCK_SIZE) {
                     long blockLength = currentSSTableSize - blockStartOffset;
                     index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
                     blockStartOffset = currentSSTableSize;
