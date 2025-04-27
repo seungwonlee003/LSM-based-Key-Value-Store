@@ -7,7 +7,6 @@ import java.util.NoSuchElementException;
 
 public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
     private final RandomAccessFile file;
-    private final NavigableMap<String, SSTable.BlockInfo> index;
     private final Iterator<Map.Entry<String, SSTable.BlockInfo>> indexIterator;
     private final long fileLength;
     private boolean closed;
@@ -18,9 +17,8 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
     public SSTableIterator(SSTable sstable) {
         try {
             this.file = new RandomAccessFile(sstable.getFilePath(), "r");
+            this.indexIterator = sstable.getIndex().entrySet().iterator();
             this.fileLength = file.length();
-            this.index = sstable.getIndex();
-            this.indexIterator = index.entrySet().iterator();
             this.closed = false;
             this.blockBuffer = null;
             this.blockDataIn = null;
