@@ -31,9 +31,11 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
     @Override
     public boolean hasNext() {
         try {
-            if (blockDataIn != null && blockDataIn.available() > 0) {
-                return true;
-            }
+            return !closed && (
+                (blockDataIn != null && blockDataIn.available() > 0) ||
+                indexIterator.hasNext() ||
+                file.getFilePointer() < file.length()
+            );
         } catch (IOException e) {
             throw new RuntimeException("Error checking file pointer", e);
         }
@@ -57,12 +59,8 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
 
             int valueLength = blockDataIn.readInt();
             byte[] valueBytes = new byte[valueLength];
-            if (valueLength > 0) {
-                blockDataIn.readFully(valueBytes);
-            }
-            String value = valueLength > 0 ? new String(valueBytes, StandardCharsets.UTF_8) : null;
-
-            file.seek(file.getFilePointer() + 4 + keyLength + 4 + valueLength);
+            blockDataIn.readFully(valueBytes);
+            String value = new String(valueBytes, StandardCharsets.UTF_8);
 
             return new AbstractMap.SimpleEntry<>(key, value);
         } catch (IOException e) {
@@ -87,6 +85,7 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
         blockDataIn = new DataInputStream(blockBuffer);
 
         currentBlockEnd = blockInfo.offset + blockInfo.length;
+        file.seek(currentBlockEnd);
     }
 
     public void close() {
