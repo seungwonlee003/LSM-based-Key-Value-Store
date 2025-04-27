@@ -2,7 +2,7 @@ public class SSTableService {
     private final Manifest manifest;
 
     public SSTableService(Manifest manifest) {
-        this.manifest = Objects.requireNonNull(manifest);
+        this.manifest = manifest;
     }
 
     public String get(String key) {
