@@ -33,7 +33,9 @@ public class SSTableIterator implements Iterator<Map.Entry<String, String>> {
     @Override
     public boolean hasNext() {
         try {
-            return !closed && file.getFilePointer() < fileLength;
+            if (blockDataIn != null && blockDataIn.available() > 0) {
+                return true;
+            }
         } catch (IOException e) {
             throw new RuntimeException("Error checking file pointer", e);
         }
