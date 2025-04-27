@@ -300,10 +300,10 @@ public class SSTable {
         }
 
         // Finalize any remaining data
-        if (file != null && currentSSTableSize > 0) {
+        if (file != null && currentOffset > 0) {
             // Finalize last block
             if (currentBlockSize > 0) {
-                long blockLength = currentSSTableSize - blockStartOffset;
+                long blockLength = currentOffset - blockStartOffset;
                 index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
             }
 
