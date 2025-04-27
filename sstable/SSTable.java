@@ -208,20 +208,7 @@ public class SSTable {
             if (lastKey == null || !lastKey.equals(key)) {
                 lastKey = key;
                 String value = entry.value;
-
-                // Calculate pair size, handling null values
-                byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-                byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
-                int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
-
-                if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
-                    long blockLength = currentSSTableSize - blockStartOffset;
-                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
-                    blockStartOffset = currentSSTableSize;
-                    firstKeyOfBlock = key;
-                    currentBlockSize = 0;
-                }
-
+                
                 // Initialize SSTable if none exists
                 if (file == null) {
                     filePath = "./data/sstable_" + System.nanoTime() + ".sst";
@@ -234,6 +221,19 @@ public class SSTable {
                     maxKey = null;
                     blockStartOffset = 0;
                     firstKeyOfBlock = key;
+                }
+                
+                // Calculate pair size, handling null values
+                byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+                byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
+                int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
+
+                if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
+                    long blockLength = currentSSTableSize - blockStartOffset;
+                    index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
+                    blockStartOffset = currentSSTableSize;
+                    firstKeyOfBlock = key;
+                    currentBlockSize = 0;
                 }
 
                 // Write pair directly
