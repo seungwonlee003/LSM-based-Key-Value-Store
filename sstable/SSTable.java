@@ -42,7 +42,8 @@ public class SSTable {
         this.minKey = minKey;
         this.maxKey = maxKey;
     }
-    
+
+    // Read SSTable file in 4KB chunks to rebuild block index and Bloom filter
     public void init() throws IOException {
         try (RandomAccessFile file = new RandomAccessFile(filePath, "r");
              DataInputStream dataIn = new DataInputStream(new BufferedInputStream(new FileInputStream(file.getFD()), BLOCK_SIZE))) {
@@ -99,6 +100,7 @@ public class SSTable {
         }
     }
 
+    // Write memtable to SSTable in 4KB buffered chunks, indexing blocks of ~4KB
     public static SSTable createSSTableFromMemtable(Memtable memtable) throws IOException {
         String filePath = "./data/sstable_" + System.nanoTime() + ".sst";
         BloomFilter bloomFilter = new BloomFilter(1000, 3);
@@ -158,6 +160,7 @@ public class SSTable {
         return new SSTable(filePath, bloomFilter, index, minKey, maxKey);
     }
 
+    // Merge SSTables by reading blocks (~4KB) and writing new SSTables in 4KB chunks
     public static List<SSTable> sortedRun(String dataDir, List<SSTable> tables) throws IOException {
         SSTableIterator[] iterators = new SSTableIterator[tables.size()];
         for (int i = 0; i < tables.size(); i++) {
@@ -220,6 +223,7 @@ public class SSTable {
         return newSSTables;
     }
 
+    // Write buffer to SSTable in 4KB buffered chunks, indexing blocks of ~4KB
     private static SSTable createSSTableFromBuffer(String dataDir, List<Map.Entry<String, String>> buffer) throws IOException {
         String filePath = dataDir + "/sstable_" + System.nanoTime() + ".sst";
         BloomFilter bloomFilter = new BloomFilter(1000, 3);
@@ -283,6 +287,7 @@ public class SSTable {
         return bloomFilter.mightContain(key);
     }
 
+    // Read block (~4KB) from disk using block index to find key
     public String get(String key) {
         if (key.compareTo(minKey) < 0 || key.compareTo(maxKey) > 0) {
             return null;
