@@ -53,8 +53,11 @@ public class SSTable {
             String firstKeyOfBlock = null;
     
             while (true) {
-                int keyLength = dataIn.readInt();
-
+                try {
+                    keyLength = dataIn.readInt();
+                } catch (EOFException eof) {
+                    break;  // end of file → exit loop
+                }
                 byte[] keyBytes = new byte[keyLength];
                 dataIn.readFully(keyBytes);
                 String key = new String(keyBytes, StandardCharsets.UTF_8);
