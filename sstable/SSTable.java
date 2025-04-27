@@ -52,44 +52,22 @@ public class SSTable {
             int currentBlockSize = 0;
             String firstKeyOfBlock = null;
     
-            while (file.getFilePointer() < file.length()) {
-                // Read key length
-                int keyLength;
-                try {
-                    keyLength = dataIn.readInt();
-                    if (keyLength < 0) {
-                        throw new IOException("Invalid key length: " + keyLength);
-                    }
-                } catch (EOFException e) {
-                    throw new IOException("Unexpected EOF while reading key length", e);
-                }
-    
-                // Read key bytes
+            while (true) {
+                int keyLength = dataIn.readInt();
+
                 byte[] keyBytes = new byte[keyLength];
                 dataIn.readFully(keyBytes);
                 String key = new String(keyBytes, StandardCharsets.UTF_8);
     
-                // Read value length
-                int valueLength;
-                try {
-                    valueLength = dataIn.readInt();
-                    if (valueLength < 0) {
-                        throw new IOException("Invalid value length: " + valueLength);
-                    }
-                } catch (EOFException e) {
-                    throw new IOException("Unexpected EOF while reading value length", e);
-                }
+                int valueLength = dataIn.readInt();
     
-                // Read value bytes
                 byte[] valueBytes = new byte[valueLength];
                 if (valueLength > 0) {
                     dataIn.readFully(valueBytes);
                 }
     
-                // Calculate pair size
                 int pairSize = 4 + keyLength + 4 + valueLength;
     
-                // Start new block or finalize current block
                 if (currentBlockSize == 0) {
                     firstKeyOfBlock = key;
                     blockStartOffset = currentOffset;
@@ -101,19 +79,16 @@ public class SSTable {
                     currentBlockSize = 0;
                 }
     
-                // Update offset, block size, and Bloom filter
                 currentOffset += pairSize;
                 currentBlockSize += pairSize;
                 bloomFilter.add(key);
     
-                // Update min/max keys
                 if (minKey == null) {
                     minKey = key;
                 }
                 maxKey = key;
             }
     
-            // Finalize last block if not empty
             if (currentBlockSize > 0) {
                 long blockLength = currentOffset - blockStartOffset;
                 index.put(firstKeyOfBlock, new BlockInfo(blockStartOffset, blockLength));
