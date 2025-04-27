@@ -122,14 +122,11 @@ public class SSTable {
                 String key = entry.getKey();
                 String value = entry.getValue();
                 bloomFilter.add(key);
-        
-                if (minKey == null) {
-                    minKey = key;
-                }
-                maxKey = key;
-        
+
+                // Keys and values are never null; if deleted, a special marker becomes the value.
                 byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-                byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
+                byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
+                
                 int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
         
                 if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
@@ -139,6 +136,7 @@ public class SSTable {
                     blockStartOffset = currentOffset;
                     currentBlockSize = 0;
                 }
+                
                 if (currentBlockSize == 0) {
                     firstKeyOfBlock = key;
                 }
@@ -150,6 +148,11 @@ public class SSTable {
         
                 currentOffset += pairSize;
                 currentBlockSize += pairSize;
+                        
+                if (minKey == null) {
+                    minKey = key;
+                }
+                maxKey = key;
             }
 
             if (currentBlockSize > 0) {
@@ -244,14 +247,10 @@ public class SSTable {
                 String value = entry.getValue();
         
                 bloomFilter.add(key);
-                if (minKey == null) {
-                    minKey = key;
-                }
-                maxKey = key;
         
                 byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-                byte[] valueBytes = value != null ? value.getBytes(StandardCharsets.UTF_8) : new byte[0];
-                int pairSize = Integer.BYTES + keyBytes.length + Integer.BYTES + valueBytes.length;
+                byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
+                int pairSize = 4 + keyBytes.length + 4 + valueBytes.length;
         
                 if (currentBlockSize + pairSize > BLOCK_SIZE && currentBlockSize > 0) {
                     long blockLength = currentOffset - blockStartOffset;
@@ -273,6 +272,11 @@ public class SSTable {
         
                 currentOffset += pairSize;
                 currentBlockSize += pairSize;
+
+                if (minKey == null) {
+                    minKey = key;
+                }
+                maxKey = key;
             }
     
             if (currentBlockSize > 0) {
@@ -289,6 +293,7 @@ public class SSTable {
 
     // Read block (~4KB) from disk using block index to find key
     public String get(String key) {
+        // Range check per sstable - returns if the key doesn't fall in the range
         if (key.compareTo(minKey) < 0 || key.compareTo(maxKey) > 0) {
             return null;
         }
@@ -319,12 +324,10 @@ public class SSTable {
 
                     int valueLength = dis.readInt();
                     byte[] valueBytes = new byte[valueLength];
-                    if (valueLength > 0) {
-                        dis.readFully(valueBytes);
-                    }
+                    dis.readFully(valueBytes);
 
                     if (currentKey.equals(key)) {
-                        return valueLength > 0 ? new String(valueBytes, StandardCharsets.UTF_8) : null;
+                        return new String(valueBytes, StandardCharsets.UTF_8);
                     }
                 }
             }
